@@ -331,6 +331,7 @@ function compactSdkFact(fact: AssessmentFact) {
     name: fact.name,
     access: fact.access,
     usage: fact.usage,
+    usageDetails: fact.usageDetails,
     reachable: fact.reachable,
     parameters: fact.parameters?.map((parameter) => ({
       position: parameter.position,
@@ -1099,17 +1100,6 @@ function deterministicCoverage({
         downstreamCandidateIds,
       };
     }
-    if (declarationsByHunk.has(hunkId) || operationsByHunk.has(hunkId)) {
-      return {
-        hunkId,
-        status: "no-impact",
-        reason: declarationsByHunk.has(hunkId)
-          ? "declaration-mapped-and-contracts-compared"
-          : "operation-mapped-and-contracts-compared",
-        restCandidateIds: [],
-        downstreamCandidateIds: [],
-      };
-    }
     if (documentationOnly(source, hunkId)) {
       return {
         hunkId,
@@ -1143,6 +1133,17 @@ function deterministicCoverage({
         hunkId,
         status: "no-impact",
         reason: representedReason,
+        restCandidateIds: [],
+        downstreamCandidateIds: [],
+      };
+    }
+    if (declarationsByHunk.has(hunkId) || operationsByHunk.has(hunkId)) {
+      return {
+        hunkId,
+        status: "unknown",
+        reason: declarationsByHunk.has(hunkId)
+          ? "mapped-declaration-without-deterministic-candidate"
+          : "mapped-operation-without-deterministic-candidate",
         restCandidateIds: [],
         downstreamCandidateIds: [],
       };
