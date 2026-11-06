@@ -843,7 +843,7 @@ export interface SourceReviewRequest extends ModelInputItem {
   evidenceSetId: string;
   deterministicStatus: "associated" | "unresolved";
   deterministicDeclarationIds: string[];
-  availableDeclarations: SourceReviewDeclaration[];
+  availableDeclarationIds: string[];
   sourceChangeIds: string[];
   hunkIds: string[];
 }
@@ -988,6 +988,7 @@ export interface AssessmentModelInput {
   informationalSemanticIntentIds?: string[];
   restCandidates: (ModelInputItem & { id: string })[];
   downstreamCandidates: (ModelInputItem & { id: string })[];
+  sourceReviewDeclarations: SourceReviewDeclaration[];
   sourceReviewRequests: SourceReviewRequest[];
   inferenceRequests: InferenceRequest[];
   complianceSearchRequests: ComplianceModelInputRequest[];
