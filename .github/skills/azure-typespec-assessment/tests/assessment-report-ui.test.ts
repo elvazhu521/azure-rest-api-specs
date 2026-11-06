@@ -90,6 +90,7 @@ const reportRenderHelpers: Parameters<typeof renderReportSections>[1] = {
   complianceFindingGroups: () => [],
   complianceCode: () => "",
   renderSourceHunks: () => "",
+  renderCompleteModelDeclarations: () => "",
   focusedSourceChanges: () => [],
   sourceLinks: () => "",
   legacyEvidence: () => "",
