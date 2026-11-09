@@ -95,7 +95,6 @@ type InputAccounting = {
     semanticReviewUnits: number;
     restCandidates: number;
     downstreamCandidates: number;
-    downstreamRootCauses: number;
     sourceReviewDeclarations: number;
     sourceReviewRequests: number;
     complianceSearchRequests: number;
@@ -105,6 +104,7 @@ type InputAccounting = {
 };
 type AnalysisModelInput = {
   schemaVersion: number;
+  pipelineVersion: 2;
   context: Record<string, unknown>;
   artifactReferences: AssessmentModelInput["artifactReferences"];
   evidenceSets: Record<string, import("./runtime-types.ts").EvidenceSet & Record<string, unknown>>;
@@ -113,9 +113,6 @@ type AnalysisModelInput = {
   informationalSemanticIntentIds: string[];
   restCandidates: AssessmentModelInput["restCandidates"];
   downstreamCandidates: AssessmentModelInput["downstreamCandidates"];
-  downstreamRootCauses: import("./runtime-types.ts").DownstreamRootCause[];
-  sourceReviewDeclarations: AssessmentModelInput["sourceReviewDeclarations"];
-  sourceReviewRequests: AssessmentModelInput["sourceReviewRequests"];
   complianceSearchRequests: AssessmentModelInput["complianceSearchRequests"];
   inferenceRequests: AssessmentModelInput["inferenceRequests"];
   blockers: unknown[];
@@ -446,20 +443,6 @@ function candidateReferencedFactIds(analysis: { candidates?: AssessmentCandidate
   return new Set(
     (analysis.candidates ?? []).flatMap((candidate) => candidate.evidenceFactIds ?? []),
   );
-}
-
-function downstreamReferencedFactIds(downstream: DownstreamAnalysis) {
-  const ids = candidateReferencedFactIds(downstream);
-  for (const rootCause of downstream.rootCauses ?? []) {
-    for (const id of [
-      ...(rootCause.methodFactIds ?? []),
-      ...(rootCause.typeFactIds ?? []),
-      ...(rootCause.referenceEvidence ?? []).flatMap((edge) => [edge.fromFactId, edge.toFactId]),
-    ]) {
-      if (id) ids.add(id);
-    }
-  }
-  return ids;
 }
 
 function semanticSourceExcerpts(
@@ -1279,9 +1262,8 @@ function accountInput(
         semanticReviewUnits: input.semanticReviewUnits.length,
         restCandidates: input.restCandidates.length,
         downstreamCandidates: input.downstreamCandidates.length,
-        downstreamRootCauses: input.downstreamRootCauses.length,
-        sourceReviewDeclarations: input.sourceReviewDeclarations.length,
-        sourceReviewRequests: input.sourceReviewRequests.length,
+        sourceReviewDeclarations: 0,
+        sourceReviewRequests: 0,
         complianceSearchRequests: input.complianceSearchRequests.length,
         inferenceRequests: input.inferenceRequests.length,
       },
@@ -1396,16 +1378,9 @@ export function buildModelInput({
             retainedDownstreamCandidateIds.has(candidate.id),
         )
       : [];
-  const retainedRootCauseIds = new Set(
-    retainedDownstreamCandidates.flatMap((candidate) => candidate.rootCauseIds ?? []),
-  );
-  const retainedDownstreamRootCauses = (downstream.rootCauses ?? []).filter((rootCause) =>
-    retainedRootCauseIds.has(rootCause.id),
-  );
   const retainedDownstream = {
     ...downstream,
     candidates: retainedDownstreamCandidates,
-    rootCauses: retainedDownstreamRootCauses,
   };
 
   const evidenceSets: Record<
@@ -1432,7 +1407,7 @@ export function buildModelInput({
   const retainedFactIds = new Set([
     ...retainedInferenceFactIds,
     ...retainedRestCandidates.flatMap((candidate) => candidate.evidenceFactIds ?? []),
-    ...downstreamReferencedFactIds(retainedDownstream),
+    ...candidateReferencedFactIds(retainedDownstream),
     ...downstream.blockers.flatMap((blocker) => blocker.evidenceFactIds ?? []),
   ]);
 
@@ -1451,69 +1426,6 @@ export function buildModelInput({
         artifact,
         candidate.id,
       ),
-    };
-  };
-
-  const sourceReviewDeclarationRegistry = new Map<
-    string,
-    AssessmentModelInput["sourceReviewDeclarations"][number]
-  >();
-  const sourceReviewRequest = (
-    candidate: AssessmentCandidate,
-    dimension: "rest" | "downstream",
-    compact: ReturnType<typeof compactCandidate>,
-  ): AssessmentModelInput["sourceReviewRequests"][number] => {
-    const sourceChangeIds = [...new Set(candidate.sourceChangeIds ?? [])].sort();
-    const hunkIds = [...new Set(candidate.hunkIds ?? [])].sort();
-    const allowedHunks = new Set(hunkIds);
-    const availableDeclarations = sourceChangeIds
-      .flatMap((sourceChangeId) => {
-        const source = sourceChanges[sourceChangeId];
-        return (source?.declarations ?? [])
-          .filter(
-            (declaration) =>
-              !allowedHunks.size || declaration.hunkIds?.some((hunkId) => allowedHunks.has(hunkId)),
-          )
-          .map((declaration) => ({
-            declarationId: declaration.id,
-            sourceChangeId,
-            qualifiedName: declaration.qualifiedName,
-            kind: declaration.kind,
-            revision: declaration.source?.revision ?? "current",
-            startLine: declaration.source?.startLine ?? 1,
-            endLine: declaration.source?.endLine ?? declaration.source?.startLine ?? 1,
-            hunkIds: [...new Set(declaration.hunkIds ?? [])].sort(),
-          }));
-      })
-      .sort((left, right) =>
-        [left.sourceChangeId, left.qualifiedName, left.revision, left.startLine, left.declarationId]
-          .join("\0")
-          .localeCompare(
-            [
-              right.sourceChangeId,
-              right.qualifiedName,
-              right.revision,
-              right.startLine,
-              right.declarationId,
-            ].join("\0"),
-          ),
-      );
-    const availableIds = new Set(availableDeclarations.map((item) => item.declarationId));
-    availableDeclarations.forEach((declaration) =>
-      sourceReviewDeclarationRegistry.set(declaration.declarationId, declaration),
-    );
-    const deterministicDeclarationIds = [...new Set(candidate.declarationIds ?? [])]
-      .filter((id) => availableIds.has(id))
-      .sort();
-    return {
-      candidateId: candidate.id,
-      dimension,
-      evidenceSetId: compact.evidenceSetId,
-      deterministicStatus: deterministicDeclarationIds.length ? "associated" : "unresolved",
-      deterministicDeclarationIds,
-      availableDeclarationIds: availableDeclarations.map((item) => item.declarationId),
-      sourceChangeIds,
-      hunkIds,
     };
   };
 
@@ -1557,6 +1469,7 @@ export function buildModelInput({
 
   const input: AnalysisModelInput = {
     schemaVersion: 1,
+    pipelineVersion: 2,
     context: {
       sourceComparison: {
         baseCommit: manifest.comparison.mergeBaseCommit,
@@ -1593,16 +1506,6 @@ export function buildModelInput({
     informationalSemanticIntentIds: informationalSemanticUnits.map((unit) => unit.id),
     restCandidates: compactRestCandidates,
     downstreamCandidates: compactDownstreamCandidates,
-    downstreamRootCauses: downstream.status === "ready" ? retainedDownstreamRootCauses : [],
-    sourceReviewDeclarations: [],
-    sourceReviewRequests: [
-      ...retainedRestCandidates.map((candidate, index) =>
-        sourceReviewRequest(candidate, "rest", compactRestCandidates[index]),
-      ),
-      ...retainedDownstreamCandidates.map((candidate, index) =>
-        sourceReviewRequest(candidate, "downstream", compactDownstreamCandidates[index]),
-      ),
-    ],
     complianceSearchRequests,
     inferenceRequests,
     blockers: [
@@ -1613,9 +1516,6 @@ export function buildModelInput({
     ],
     inputAccounting: {},
   };
-  input.sourceReviewDeclarations = [...sourceReviewDeclarationRegistry.values()].sort(
-    (left, right) => left.declarationId.localeCompare(right.declarationId),
-  );
   return accountInput(input, maximumBytes);
 }
 

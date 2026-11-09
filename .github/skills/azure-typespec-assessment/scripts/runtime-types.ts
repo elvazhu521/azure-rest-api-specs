@@ -925,6 +925,7 @@ export interface SourceReviewDecision {
 
 export interface AssessmentJudgment {
   schemaVersion: 1;
+  pipelineVersion?: 2;
   semanticIntents: {
     reviewUnitId: string;
     title: string;
@@ -976,6 +977,7 @@ export interface ComplianceModelInputRequest extends ModelInputItem {
 }
 
 export interface AssessmentModelInput {
+  pipelineVersion?: 2;
   context?: {
     sourceComparison?: unknown;
     projects?: {
@@ -988,8 +990,8 @@ export interface AssessmentModelInput {
   informationalSemanticIntentIds?: string[];
   restCandidates: (ModelInputItem & { id: string })[];
   downstreamCandidates: (ModelInputItem & { id: string })[];
-  sourceReviewDeclarations: SourceReviewDeclaration[];
-  sourceReviewRequests: SourceReviewRequest[];
+  sourceReviewDeclarations?: SourceReviewDeclaration[];
+  sourceReviewRequests?: SourceReviewRequest[];
   inferenceRequests: InferenceRequest[];
   complianceSearchRequests: ComplianceModelInputRequest[];
   evidenceSets?: Record<string, EvidenceSet>;
@@ -1226,7 +1228,7 @@ export interface DownstreamAnalysis {
   schemaVersion: number;
   status: "ready" | "blocked";
   facts: Record<string, AssessmentFact>;
-  rootCauses: DownstreamRootCause[];
+  rootCauses?: DownstreamRootCause[];
   candidates: DownstreamCandidate[];
   blockers: PreparationBlocker[];
 }
